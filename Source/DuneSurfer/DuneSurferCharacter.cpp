@@ -54,6 +54,11 @@ ADuneSurferCharacter::ADuneSurferCharacter()
 
 	// Note: The ProjectileClass and the skeletal mesh/anim blueprints for Mesh1P, FP_Gun, and VR_Gun 
 	// are set in the derived blueprint asset named MyCharacter to avoid direct content references in C++.
+
+	//this->ReceiveHit.AddDynamic(this, &ADuneSurferCharacter::OnReceiveHit);
+
+	UCapsuleComponent* capsule = Cast<UCapsuleComponent>(RootComponent);
+	if (capsule) { capsule->SetNotifyRigidBodyCollision(true); }
 }
 
 void ADuneSurferCharacter::BeginPlay()
@@ -65,6 +70,16 @@ void ADuneSurferCharacter::BeginPlay()
 	FP_Gun->AttachToComponent(Mesh1P, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
 
 	Mesh1P->SetHiddenInGame(false, true);
+
+	for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	{
+		FString ActorName = ActorItr->GetName();
+		if (ActorName.Contains(TEXT("Landscape_")))
+		{
+			Landscape = *ActorItr;
+			break;
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -75,8 +90,8 @@ void ADuneSurferCharacter::SetupPlayerInputComponent(class UInputComponent* Play
 	// set up gameplay key bindings
 	check(PlayerInputComponent);
 
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ADuneSurferCharacter::JumpPressed);
+	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ADuneSurferCharacter::JumpReleased);
 
 	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ADuneSurferCharacter::OnFire);
 
@@ -132,7 +147,8 @@ void ADuneSurferCharacter::MoveForward(float Value)
 	if (Value != 0.0f)
 	{
 		// add movement in that direction
-		AddMovementInput(GetActorForwardVector(), Value);
+		SetInclineSpeedModifier(Value);
+		AddMovementInput(GetActorForwardVector(), Value * InclineSpeedModifier);
 	}
 }
 
@@ -155,4 +171,95 @@ void ADuneSurferCharacter::LookUpAtRate(float Rate)
 {
 	// calculate delta for this frame from the rate information
 	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+}
+
+void ADuneSurferCharacter::JumpPressed()
+{
+	Super::Jump();
+}
+
+void ADuneSurferCharacter::JumpReleased()
+{
+	Super::StopJumping();
+}
+
+void ADuneSurferCharacter::NotifyHit(	class UPrimitiveComponent* MyComp,
+										class AActor* Other,
+										class UPrimitiveComponent* OtherComp,
+										bool bSelfMoved,
+										FVector HitLocation,
+										FVector HitNormal,
+										FVector NormalImpulse,
+										const FHitResult& Hit)
+{
+	return;
+}
+
+void ADuneSurferCharacter::Tick(float DeltaSeconds)
+{
+
+}
+
+void ADuneSurferCharacter::DetectTerrainSlope()
+{
+	FVector StartLocForGroundTrace = GetActorLocation();
+	FVector EndLocForGroundTrace = GetActorLocation() + (FVector::UpVector * -1 * 10000.f);
+	FHitResult hit;
+	FCollisionQueryParams ignoreSelfParams;
+	ignoreSelfParams.AddIgnoredActor(this);
+	if (GetWorld()->LineTraceSingleByObjectType(hit, StartLocForGroundTrace, EndLocForGroundTrace, FCollisionObjectQueryParams::DefaultObjectQueryParam, ignoreSelfParams))
+	{
+		if (hit.Actor == Landscape)
+		{
+			FVector InclineTraceStart = GetActorLocation();
+			FVector InclineTraceDirection = GetActorForwardVector().RotateAngleAxis(-60.f, FVector::CrossProduct(GetActorForwardVector(), FVector::UpVector));
+			FVector InclineTraceEnd = GetActorLocation() + InclineTraceDirection * 10000.f;
+			FHitResult inclineHit;
+			if (GetWorld()->LineTraceSingleByObjectType(inclineHit, InclineTraceStart, InclineTraceEnd, FCollisionObjectQueryParams::DefaultObjectQueryParam, ignoreSelfParams))
+			{
+				if (inclineHit.Actor == Landscape)
+				{
+					FVector newForward = inclineHit.ImpactPoint - hit.ImpactPoint;
+					ForwardTerrainDirection = newForward.GetSafeNormal();
+					RightTerrainDirection = -FVector::CrossProduct(ForwardTerrainDirection, FVector::UpVector).GetSafeNormal();
+					return;
+				}
+			}
+		}
+	}
+
+	ForwardTerrainDirection = GetActorForwardVector();
+	RightTerrainDirection = GetActorRightVector();
+}
+
+void ADuneSurferCharacter::SetInclineSpeedModifier(float Direction)
+{
+	if (ForwardTerrainDirection.Z == 0)
+	{
+		InclineSpeedModifier = 1.0f;
+		return;
+	}
+	
+	if (ForwardTerrainDirection.Z < 0)
+	{
+		if (Direction < 0)
+		{
+			InclineSpeedModifier = 1 - FMath::Abs(ForwardTerrainDirection.Z);
+		}
+		else
+		{
+			InclineSpeedModifier = 1 + FMath::Abs(ForwardTerrainDirection.Z);
+		}
+	}
+	else
+	{
+		if (Direction < 0)
+		{
+			InclineSpeedModifier = 1 + ForwardTerrainDirection.Z;
+		}
+		else
+		{
+			InclineSpeedModifier = 1 - ForwardTerrainDirection.Z;
+		}
+	}
 }

@@ -1,6 +1,7 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "GameFramework/Character.h"
+#include "EngineUtils.h"
 #include "DuneSurferCharacter.generated.h"
 
 class UInputComponent;
@@ -25,6 +26,15 @@ class ADuneSurferCharacter : public ACharacter
 	/** First person camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class UCameraComponent* FirstPersonCameraComponent;
+
+	FVector ForwardTerrainDirection;
+	FVector LeftTerrainDirection;
+	FVector RightTerrainDirection;
+	class AActor* Landscape;
+	float InclineSpeedModifier;
+
+	void DetectTerrainSlope();
+	void SetInclineSpeedModifier(float Direction);
 
 public:
 	ADuneSurferCharacter();
@@ -77,6 +87,19 @@ protected:
 	 * @param Rate	This is a normalized rate, i.e. 1.0 means 100% of desired turn rate
 	 */
 	void LookUpAtRate(float Rate);
+
+	void JumpPressed();
+	void JumpReleased();
+
+	void NotifyHit(	class UPrimitiveComponent* MyComp,
+					class AActor* Other,
+					class UPrimitiveComponent* OtherComp,
+					bool bSelfMoved,
+					FVector HitLocation,
+					FVector HitNormal,
+					FVector NormalImpulse,
+					const FHitResult& Hit) override;
+	void Tick(float DeltaSeconds) override;
 	
 protected:
 	// APawn interface
